@@ -1,0 +1,67 @@
+# yolov8n_p2_5x5_cbam.yaml
+# YOLOv8n variant with added P2 (stride=4), 5x5 conv kernels, and CBAM for micro-crack detection
+# Designed to maximize small-object sensitivity with minimal compute increase
+
+nc: 1 # number of classes
+scales:
+  n: [ 0.33, 0.25, 1024 ]
+
+# Backbone: P2 added, conv kernels 5x5, CBAM after C2f blocks
+backbone:
+- [ -1, 1, Conv, [ 64, 5, 2 ] ]
+- [ -1, 1, Conv, [ 128, 5, 2 ] ] # P2
+- [ -1, 2, C2f, [ 128, True, 5 ] ]
+- [ -1, 1, CBAM, [ 128 ] ] # CBAM after C2f
+
+- [ -1, 1, Conv, [ 256, 5, 2 ] ]
+- [ -1, 4, C2f, [ 256, True, 5 ] ]
+- [ -1, 1, CBAM, [ 256 ] ] # CBAM after C2f
+
+- [ -1, 1, Conv, [ 512, 5, 2 ] ]
+- [ -1, 4, C2f, [ 512, True, 5 ] ]
+- [ -1, 1, CBAM, [ 512 ] ] # CBAM after C2f
+
+- [ -1, 1, Conv, [ 1024, 5, 2 ] ]
+- [ -1, 2, C2f, [ 1024, True, 5 ] ]
+- [ -1, 1, SPPF, [ 1024, 5 ] ]
+
+# Head: P2->P3->P4->P5 with CBAM after each fusion block
+head:
+- [ -1, 1, nn.Upsample, [ None, 2, "nearest" ] ]
+- [ [ -1, 6 ], 1, Concat, [ 1 ] ]
+- [ -1, 2, C2f, [ 512, 5 ] ]
+- [ -1, 1, CBAM, [ 512 ] ]
+
+- [ -1, 1, nn.Upsample, [ None, 2, "nearest" ] ]
+- [ [ -1, 4 ], 1, Concat, [ 1 ] ]
+- [ -1, 2, C2f, [ 256, 5 ] ]
+- [ -1, 1, CBAM, [ 256 ] ]
+
+- [ -1, 1, nn.Upsample, [ None, 2, "nearest" ] ]
+- [ [ -1, 1 ], 1, Concat, [ 1 ] ]
+- [ -1, 2, C2f, [ 128, 5 ] ] # P2 head
+- [ -1, 1, CBAM, [ 128 ] ]
+
+- [ -1, 1, Conv, [ 256, 5, 2 ] ]
+- [ [ -1, 15 ], 1, Concat, [ 1 ] ]
+- [ -1, 2, C2f, [ 256, 5 ] ]
+- [ -1, 1, CBAM, [ 256 ] ]
+
+- [ -1, 1, Conv, [ 512, 5, 2 ] ]
+- [ [ -1, 12 ], 1, Concat, [ 1 ] ]
+- [ -1, 2, C2f, [ 512, 5 ] ]
+- [ -1, 1, CBAM, [ 512 ] ]
+
+- [ -1, 1, Conv, [ 1024, 5, 2 ] ]
+- [ [ -1, 9 ], 1, Concat, [ 1 ] ]
+- [ -1, 2, C2f, [ 1024, 5 ] ]
+- [ -1, 1, CBAM, [ 1024 ] ]
+
+- [ [ 18, 21, 24, 27 ], 1, Detect, [ nc ] ]
+
+# Notes:
+# - CBAM is applied after each major C2f fusion block to enhance attention on tiny cracks.
+# - All convs are 5x5 for better small-object feature capture.
+# - P2 added for highest-resolution small-object detection.
+# - Repeats minimized for efficiency.
+# - Use high-resolution input (e.g., 1280) and FP16 inference for real-time performance.
