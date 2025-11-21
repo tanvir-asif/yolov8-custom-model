@@ -1,0 +1,58 @@
+# yolov8n_p2_5x5.yaml
+# YOLOv8n variant with added P2 (stride=4) for micro-crack detection + 5x5 conv kernels
+# Designed for minimal extra resource use while keeping mAP high.
+
+nc: 1 # number of classes 
+scales:
+  n: [ 0.33, 0.25, 1024 ]
+
+# Backbone: lightweight with P2, all convs replaced with 5x5 kernels
+backbone:
+- [ -1, 1, Conv, [ 64, 5, 2 ] ] # 0 - P1 / stride 2
+- [ -1, 1, Conv, [ 128, 5, 2 ] ] # 1 - P2 / stride 4  <- new P2
+- [ -1, 2, C2f, [ 128, True, 5 ] ] # C2f with 5x5 convs
+
+- [ -1, 1, Conv, [ 256, 5, 2 ] ] # 3 - P3 / stride 8
+- [ -1, 4, C2f, [ 256, True, 5 ] ]
+
+- [ -1, 1, Conv, [ 512, 5, 2 ] ] # 5 - P4 / stride 16
+- [ -1, 4, C2f, [ 512, True, 5 ] ]
+
+- [ -1, 1, Conv, [ 1024, 5, 2 ] ] # 7 - P5 / stride 32
+- [ -1, 2, C2f, [ 1024, True, 5 ] ]
+- [ -1, 1, SPPF, [ 1024, 5 ] ] # 9 - SPPF with 5x5 kernel
+
+# Head: lightweight FPN/PAN with P2 -> P3 -> P4 -> P5
+head:
+- [ -1, 1, nn.Upsample, [ None, 2, "nearest" ] ]
+- [ [ -1, 6 ], 1, Concat, [ 1 ] ]
+- [ -1, 2, C2f, [ 512, 5 ] ] # 12
+
+- [ -1, 1, nn.Upsample, [ None, 2, "nearest" ] ]
+- [ [ -1, 4 ], 1, Concat, [ 1 ] ]
+- [ -1, 2, C2f, [ 256, 5 ] ] # 15 - P3 / stride 8
+
+- [ -1, 1, nn.Upsample, [ None, 2, "nearest" ] ]
+- [ [ -1, 1 ], 1, Concat, [ 1 ] ]
+- [ -1, 2, C2f, [ 128, 5 ] ] # 18 - P2 / stride 4
+
+- [ -1, 1, Conv, [ 256, 5, 2 ] ]
+- [ [ -1, 15 ], 1, Concat, [ 1 ] ]
+- [ -1, 2, C2f, [ 256, 5 ] ] # 21 - fused P3
+
+- [ -1, 1, Conv, [ 512, 5, 2 ] ]
+- [ [ -1, 12 ], 1, Concat, [ 1 ] ]
+- [ -1, 2, C2f, [ 512, 5 ] ] # 24 - fused P4
+
+- [ -1, 1, Conv, [ 1024, 5, 2 ] ]
+- [ [ -1, 9 ], 1, Concat, [ 1 ] ]
+- [ -1, 2, C2f, [ 1024, 5 ] ] # 27 - fused P5
+
+- [ [ 18, 21, 24, 27 ], 1, Detect, [ nc ] ]
+
+# Notes:
+# - All conv layers now use 5x5 kernels for better small-object (crack) feature extraction.
+# - P2 added for micro-crack detection.
+# - Repeats are minimized for efficiency (C2f repeats=2 or 4).
+# - Keep image size high (e.g., 960–1280) to make cracks visible.
+# - Suitable for real-time conveyor belt detection with minimal FPS loss.
