@@ -1,0 +1,71 @@
+# yolov8n_p2_min.yaml
+# YOLOv8n variant with added P2 (stride=4) for improved small-object (micro-crack) detection
+# Designed for minimal extra resource use while keeping mAP high.
+# Change `nc` to match your dataset (e.g., 1 for single-class crack detection).
+
+nc: 1 # number of classes
+scales:
+  # [depth_multiple, width_multiple, max_channels]
+  n: [ 0.33, 0.25, 1024 ]
+
+# Backbone: keep lightweight but expose P2 (stride=4)
+# Format per-row: [from, repeats, module, args]
+backbone:
+- [ -1, 1, Conv, [ 64, 3, 2 ] ] # 0 - P1 / stride 2
+- [ -1, 1, Conv, [ 128, 3, 2 ] ] # 1 - P2 / stride 4  <- we will use this in head (P2)
+- [ -1, 2, C2f, [ 128, True ] ]
+
+- [ -1, 1, Conv, [ 256, 3, 2 ] ] # 3 - P3 / stride 8
+- [ -1, 4, C2f, [ 256, True ] ]
+
+- [ -1, 1, Conv, [ 512, 3, 2 ] ] # 5 - P4 / stride 16
+- [ -1, 4, C2f, [ 512, True ] ]
+
+- [ -1, 1, Conv, [ 1024, 3, 2 ] ] # 7 - P5 / stride 32
+- [ -1, 2, C2f, [ 1024, True ] ]
+- [ -1, 1, SPPF, [ 1024, 5 ] ] # 9 - SPPF (large receptive field)
+
+# Head: build a lightweight FPN/PAN with P2 -> P3 -> P4 -> P5 flow
+head:
+# upsample P5 -> combine with P4
+- [ -1, 1, nn.Upsample, [ None, 2, "nearest" ] ]
+- [ [ -1, 6 ], 1, Concat, [ 1 ] ] # cat backbone P4
+- [ -1, 2, C2f, [ 512 ] ] # 12 - reduced repeats for efficiency
+
+# upsample -> combine with P3
+- [ -1, 1, nn.Upsample, [ None, 2, "nearest" ] ]
+- [ [ -1, 4 ], 1, Concat, [ 1 ] ] # cat backbone P3
+- [ -1, 2, C2f, [ 256 ] ] # 15 - P3 / stride 8 (small)
+
+# upsample -> combine with P2 (NEW P2 path)
+- [ -1, 1, nn.Upsample, [ None, 2, "nearest" ] ]
+- [ [ -1, 1 ], 1, Concat, [ 1 ] ] # cat backbone P2 (added P2)
+- [ -1, 2, C2f, [ 128 ] ] # 18 - P2 / stride 4 (very small objects)
+
+# downsample back to P3 (from P2 head) and fuse with previous P3 head (index 15)
+- [ -1, 1, Conv, [ 256, 3, 2 ] ]
+- [ [ -1, 15 ], 1, Concat, [ 1 ] ] # cat head P3
+- [ -1, 2, C2f, [ 256 ] ] # 21 - fused P3
+
+# downsample to P4 and fuse with previous P4 head (index 12)
+- [ -1, 1, Conv, [ 512, 3, 2 ] ]
+- [ [ -1, 12 ], 1, Concat, [ 1 ] ] # cat head P4
+- [ -1, 2, C2f, [ 512 ] ] # 24 - fused P4
+
+# downsample to P5 and fuse with SPPF/backbone P5 (index 9)
+- [ -1, 1, Conv, [ 1024, 3, 2 ] ]
+- [ [ -1, 9 ], 1, Concat, [ 1 ] ] # cat head P5
+- [ -1, 2, C2f, [ 1024 ] ] # 27 - fused P5
+
+# Detect from P2 (idx 18), P3 (idx 21), P4 (idx 24) and P5 (idx 27)
+# Note: Detect can accept multiple scales; including P2 gives more small-object sensitivity
+- [ [ 18, 21, 24, 27 ], 1, Detect, [ nc ] ]
+
+# Notes:
+# - This variant keeps depth/width near 'n' scale to minimize resource usage.
+# - Repeats have been reduced (C2f repeats = 2 or 4) to lower compute and memory while retaining capacity.
+# - P2 is added to improve detection of micro-cracks (small objects). Including P2 increases small-object mAP substantially with modest extra cost.
+# - For training: use higher imgsz (e.g., 960 or 1280) and tiling to make cracks occupy more pixels without significantly increasing model size.
+# - For inference: export to ONNX/TensorRT and use FP16 for best speed/latency tradeoff.
+# - Change `nc` to your number of classes and train normally: 
+#     yolo detect train model=yolov8n_p2_minimal.yaml data=data.yaml imgsz=1280 epochs=150 batch=8 optimizer=AdamW
