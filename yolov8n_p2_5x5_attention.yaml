@@ -1,0 +1,66 @@
+# yolov8n_p2_5x5_attention.yaml
+# YOLOv8n variant with P2 (stride=4), 5x5 conv kernels, and CBAM attention modules
+# Optimized for micro-crack detection on pharmaceutical tablets
+
+nc: 1 # number of classes
+scales:
+  n: [ 0.33, 0.25, 1024 ]
+
+# Backbone: lightweight, P2 added, 5x5 convs, CBAM after C2f
+backbone:
+- [ -1, 1, Conv, [ 64, 5, 2 ] ]
+- [ -1, 1, Conv, [ 128, 5, 2 ] ] # P2
+- [ -1, 2, C2f, [ 128, True, 5 ] ]
+- [ -1, 1, CBAM, [ 128 ] ]
+
+- [ -1, 1, Conv, [ 256, 5, 2 ] ]
+- [ -1, 4, C2f, [ 256, True, 5 ] ]
+- [ -1, 1, CBAM, [ 256 ] ]
+
+- [ -1, 1, Conv, [ 512, 5, 2 ] ]
+- [ -1, 4, C2f, [ 512, True, 5 ] ]
+- [ -1, 1, CBAM, [ 512 ] ]
+
+- [ -1, 1, Conv, [ 1024, 5, 2 ] ]
+- [ -1, 2, C2f, [ 1024, True, 5 ] ]
+- [ -1, 1, SPPF, [ 1024, 5 ] ]
+
+# Head: P2->P3->P4->P5 with CBAM after each fusion block
+head:
+- [ -1, 1, nn.Upsample, [ None, 2, "nearest" ] ]
+- [ [ -1, 6 ], 1, Concat, [ 1 ] ]
+- [ -1, 2, C2f, [ 512, 5 ] ]
+- [ -1, 1, CBAM, [ 512 ] ]
+
+- [ -1, 1, nn.Upsample, [ None, 2, "nearest" ] ]
+- [ [ -1, 4 ], 1, Concat, [ 1 ] ]
+- [ -1, 2, C2f, [ 256, 5 ] ]
+- [ -1, 1, CBAM, [ 256 ] ]
+
+- [ -1, 1, nn.Upsample, [ None, 2, "nearest" ] ]
+- [ [ -1, 1 ], 1, Concat, [ 1 ] ]
+- [ -1, 2, C2f, [ 128, 5 ] ] # P2 head
+- [ -1, 1, CBAM, [ 128 ] ]
+
+- [ -1, 1, Conv, [ 256, 5, 2 ] ]
+- [ [ -1, 15 ], 1, Concat, [ 1 ] ]
+- [ -1, 2, C2f, [ 256, 5 ] ]
+- [ -1, 1, CBAM, [ 256 ] ]
+
+- [ -1, 1, Conv, [ 512, 5, 2 ] ]
+- [ [ -1, 12 ], 1, Concat, [ 1 ] ]
+- [ -1, 2, C2f, [ 512, 5 ] ]
+- [ -1, 1, CBAM, [ 512 ] ]
+
+- [ -1, 1, Conv, [ 1024, 5, 2 ] ]
+- [ [ -1, 9 ], 1, Concat, [ 1 ] ]
+- [ -1, 2, C2f, [ 1024, 5 ] ]
+- [ -1, 1, CBAM, [ 1024 ] ]
+
+- [ [ 18, 21, 24, 27 ], 1, Detect, [ nc ] ]
+
+# Notes:
+# - CBAM modules improve focus on micro cracks.
+# - 5x5 kernels enhance small feature extraction.
+# - P2 layer added for very small object detection.
+# - Keep image size high (1280 recommended) and use FP16 for real-time inference.
